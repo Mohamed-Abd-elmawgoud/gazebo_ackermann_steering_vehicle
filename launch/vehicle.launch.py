@@ -95,6 +95,16 @@ def generate_launch_description():
         description='Control mode: teleop or auto'
     )
 
+    velocity_arg = DeclareLaunchArgument(
+    'velocity', default_value='1.5',
+    description='Velocity for auto mode (m/s)'
+    )
+
+    steering_arg = DeclareLaunchArgument(
+        'steering', default_value='0.8',
+        description='Steering angle for auto mode (-1 to +1)'
+    )
+
     # Retrieve launch configurations
     world_file = LaunchConfiguration('world')
     x = LaunchConfiguration('x')
@@ -174,18 +184,6 @@ def generate_launch_description():
                                    output='screen')
     
 
-    teleop_control_node = Node(
-        package='autonomous_systems_project_team_12',
-        executable='teleop_vehicle_controller',
-        output='screen',
-        parameters=[{
-            'use_sim_time': True
-        }], 
-       condition=IfCondition(
-        PythonExpression(["'", LaunchConfiguration('mode'), "' == 'teleop'"])
-        )
-
-    )
 
     keyboard_reader_node = Node(
         package='autonomous_systems_project_team_12',
@@ -201,18 +199,18 @@ def generate_launch_description():
     )
 
 
-    circular_motion_node = Node(
+    olr_node = Node(
         package='autonomous_systems_project_team_12',
         executable='olr_node',
         output='screen',
         parameters=[{
-            'use_sim_time': True
-        }], 
-         condition=IfCondition(
-        PythonExpression(["'", LaunchConfiguration('mode'), "' == 'auto'"])
+            'velocity':       LaunchConfiguration('velocity'),
+            'steering_angle': LaunchConfiguration('steering'),
+        }],
+        condition=IfCondition(
+            PythonExpression(["'",  LaunchConfiguration('mode'), "' == 'auto'"])
         )
     )
-
     vehicle_state_node = Node(
         package='autonomous_systems_project_team_12',
         executable='vehicle_state',
@@ -220,6 +218,13 @@ def generate_launch_description():
         parameters=[{
             'use_sim_time': True
         }]
+    )
+
+    rqt_graph_node = Node(
+        package='rqt_graph',
+        executable='rqt_graph',
+        name='rqt_graph',
+        output='screen'
     )
 
     # Create the launch description
@@ -243,10 +248,10 @@ def generate_launch_description():
         spawn_model_gazebo_node,
         robot_state_publisher_node,
         vehicle_controller_node,
-        teleop_control_node,
         keyboard_reader_node,
-        circular_motion_node,
+        olr_node,
         vehicle_state_node,
+        rqt_graph_node,
         gz_bridge_node])
 
     return launch_description
