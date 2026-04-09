@@ -11,6 +11,8 @@ from launch.actions import (IncludeLaunchDescription, DeclareLaunchArgument,
 from launch.substitutions import LaunchConfiguration
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.event_handlers import OnProcessExit
+from launch.conditions import IfCondition, UnlessCondition
+from launch.substitutions import PythonExpression
 
 from launch_ros.actions import Node
 
@@ -86,6 +88,12 @@ def generate_launch_description():
 
     yaw_arg = DeclareLaunchArgument('Y', default_value='0.0',
                                     description='Initial Yaw')
+    
+    mode_arg = DeclareLaunchArgument(
+        'mode',
+        default_value='teleop',
+        description='Control mode: teleop or auto'
+    )
 
     # Retrieve launch configurations
     world_file = LaunchConfiguration('world')
@@ -164,6 +172,55 @@ def generate_launch_description():
                                    executable='vehicle_controller',
                                    parameters=[vehicle_params_path],
                                    output='screen')
+    
+
+    teleop_control_node = Node(
+        package='autonomous_systems_project_team_12',
+        executable='teleop_vehicle_controller',
+        output='screen',
+        parameters=[{
+            'use_sim_time': True
+        }], 
+       condition=IfCondition(
+        PythonExpression(["'", LaunchConfiguration('mode'), "' == 'teleop'"])
+        )
+
+    )
+
+    keyboard_reader_node = Node(
+        package='autonomous_systems_project_team_12',
+        executable='keyboard_reader',
+        output='screen',
+        parameters=[{
+            'use_sim_time': True
+        }], 
+       condition=IfCondition(
+        PythonExpression(["'", LaunchConfiguration('mode'), "' == 'teleop'"])
+        )
+
+    )
+
+
+    circular_motion_node = Node(
+        package='autonomous_systems_project_team_12',
+        executable='olr_node',
+        output='screen',
+        parameters=[{
+            'use_sim_time': True
+        }], 
+         condition=IfCondition(
+        PythonExpression(["'", LaunchConfiguration('mode'), "' == 'auto'"])
+        )
+    )
+
+    vehicle_state_node = Node(
+        package='autonomous_systems_project_team_12',
+        executable='vehicle_state',
+        output='screen',
+        parameters=[{
+            'use_sim_time': True
+        }]
+    )
 
     # Create the launch description
     launch_description = LaunchDescription([
@@ -182,9 +239,14 @@ def generate_launch_description():
         roll_arg,
         pitch_arg,
         yaw_arg,
+        mode_arg,
         spawn_model_gazebo_node,
         robot_state_publisher_node,
         vehicle_controller_node,
+        teleop_control_node,
+        keyboard_reader_node,
+        circular_motion_node,
+        vehicle_state_node,
         gz_bridge_node])
 
     return launch_description
