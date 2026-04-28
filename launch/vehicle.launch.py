@@ -15,16 +15,9 @@ from launch.conditions import IfCondition
 from launch.substitutions import PythonExpression
 
 from launch_ros.actions import Node
-
+from launch_ros.parameter_descriptions import ParameterValue
 
 def load_robot_description(robot_description_path, vehicle_params_path):
-    """
-    Loads the robot description from a Xacro file, using parameters from a YAML file.
-
-    @param robot_description_path: Path to the robot's Xacro file.
-    @param vehicle_params_path: Path to the YAML file containing the vehicle parameters.
-    @return: A string containing the robot's URDF XML description.
-    """
     with open(vehicle_params_path, 'r') as file:
         vehicle_params = yaml.safe_load(file)['/**']['ros__parameters']
 
@@ -36,12 +29,6 @@ def load_robot_description(robot_description_path, vehicle_params_path):
 
 
 def start_vehicle_control():
-    """
-    Starts the necessary controllers for the vehicle's operation in ROS 2.
-
-    @return: A tuple containing ExecuteProcess actions for the joint state, forward velocity,
-             and forward position controllers.
-    """
     joint_state_controller = ExecuteProcess(
         cmd=['ros2', 'control', 'load_controller', '--set-state',
              'active', 'joint_state_broadcaster'],
@@ -92,10 +79,18 @@ def generate_launch_description():
         description='Steering angle for auto mode (-1 to +1)')
 
     # ── CLR lateral controller arguments ─────────────────────────────────────
-    # FIX: target_lateral_pos was used but never declared — added here
     target_lateral_pos_arg = DeclareLaunchArgument(
         'target_lateral_pos', default_value='0.0',
         description='Target lateral position for CLR lateral controller (m)')
+
+    desired_velocity_arg = DeclareLaunchArgument(
+        'desired_velocity', default_value='2.0',
+        description='The target velocity passed to the speed node')
+
+    # ── NEW: Lane heading argument ────────────────────────────────────────────
+    lane_heading_arg = DeclareLaunchArgument(
+        'lane_heading', default_value='0.0',
+        description='Lane heading in radians (0.0 = +X direction, 3.14159 = -X direction)')
 
     # ── Retrieve launch configurations ───────────────────────────────────────
     world_file = LaunchConfiguration('world')
@@ -139,7 +134,7 @@ def generate_launch_description():
                    '-allow_renaming', 'false'],
         output='screen')
 
-    # ── Core nodes (always running) ───────────────────────────────────────────
+    # ── Core nodes ────────────────────────────────────────────────────────────
     robot_state_publisher_node = Node(
         package='robot_state_publisher',
         executable='robot_state_publisher',
@@ -197,7 +192,9 @@ def generate_launch_description():
         executable='Autonomous_Systems_MS_3_CLR_Alg_1_Speed_Team_12',
         output='screen',
         parameters=[{
-            'velocity':     LaunchConfiguration('velocity'),
+            'desired_velocity': ParameterValue(
+                LaunchConfiguration('desired_velocity'),
+                value_type=float),
             'use_sim_time': True,
         }],
         condition=IfCondition(
@@ -208,11 +205,10 @@ def generate_launch_description():
         executable='Autonomous_Systems_MS_3_CLR_Alg_2_Lateral_Team_12',
         output='screen',
         parameters=[{
-            # FIX: target_lateral_pos now properly passed from declared arg
             'target_lateral_pos': LaunchConfiguration('target_lateral_pos'),
-            # FIX: correct URDF values for wheel_radius and wheelbase
-            'wheel_radius':       0.3,    # from URDF: wheel_radius default
-            'wheelbase':          1.4,    # from URDF: 2 * (body_length/2 - wheel_radius) = 2*0.7
+            'lane_heading':       LaunchConfiguration('lane_heading'),  # NEW
+            'wheel_radius':       0.3,
+            'wheelbase':          1.4,
             'use_sim_time':       True,
         }],
         condition=IfCondition(
@@ -242,9 +238,11 @@ def generate_launch_description():
         pitch_arg,
         yaw_arg,
         mode_arg,
-        velocity_arg,           # FIX: was declared but never added to LaunchDescription
-        steering_arg,           # FIX: was declared but never added to LaunchDescription
-        target_lateral_pos_arg, # FIX: newly declared and added
+        velocity_arg,
+        steering_arg,
+        target_lateral_pos_arg,
+        desired_velocity_arg,
+        lane_heading_arg,           # NEW
 
         # Simulation
         gazebo_launch,
@@ -253,9 +251,7 @@ def generate_launch_description():
         # Core nodes
         robot_state_publisher_node,
         vehicle_controller_node,
-        vehicle_state_node,
         gz_bridge_node,
-        rqt_graph_node,
 
         # Mode-conditional nodes
         keyboard_reader_node,
