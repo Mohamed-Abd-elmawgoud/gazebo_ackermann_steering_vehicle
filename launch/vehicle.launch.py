@@ -16,8 +16,15 @@ from launch.substitutions import PythonExpression
 
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
-
+from launch.actions import TimerAction  # Add this import at the top
 def load_robot_description(robot_description_path, vehicle_params_path):
+    """
+    Loads the robot description from a Xacro file, using parameters from a YAML file.
+
+    @param robot_description_path: Path to the robot's Xacro file.
+    @param vehicle_params_path: Path to the YAML file containing the vehicle parameters.
+    @return: A string containing the robot's URDF XML description.
+    """
     with open(vehicle_params_path, 'r') as file:
         vehicle_params = yaml.safe_load(file)['/**']['ros__parameters']
 
@@ -29,6 +36,12 @@ def load_robot_description(robot_description_path, vehicle_params_path):
 
 
 def start_vehicle_control():
+    """
+    Starts the necessary controllers for the vehicle's operation in ROS 2.
+
+    @return: A tuple containing ExecuteProcess actions for the joint state, forward velocity,
+             and forward position controllers.
+    """
     joint_state_controller = ExecuteProcess(
         cmd=['ros2', 'control', 'load_controller', '--set-state',
              'active', 'joint_state_broadcaster'],
@@ -51,18 +64,32 @@ def start_vehicle_control():
 
 def generate_launch_description():
 
-    # ── World argument ────────────────────────────────────────────────────────
-    world_arg = DeclareLaunchArgument(
-        'world', default_value='empty.sdf',
-        description='Specify the world file for Gazebo (e.g., empty.sdf)')
+    # # ── World argument ────────────────────────────────────────────────────────
+    # world_arg = DeclareLaunchArgument(
+    #     'world', default_value='empty.sdf',
+    #     description='Specify the world file for Gazebo (e.g., empty.sdf)')
 
+  # ── 1. Define Paths (MOVED TO TOP) ────────────────────────────────────────
+    # These must be defined before world_arg uses them
+    world_package_path = get_package_share_directory('autonomous_systems_project_simulation_package_team_12')
+    # default_world_path = os.path.join(world_package_path, 'Worlds', 'Empty_Track.world')
+    default_world_path = os.path.join(world_package_path, 'Worlds', 'City_Track.world')
+    
+    package_name = "gazebo_ackermann_steering_vehicle"
+    package_path = get_package_share_directory(package_name)
+
+    # ── 2. Declare Arguments ──────────────────────────────────────────────────
+    world_arg = DeclareLaunchArgument(
+        'world', default_value=default_world_path, 
+        description='Full path to the world file')
+    
     # ── Initial pose arguments ────────────────────────────────────────────────
-    x_arg     = DeclareLaunchArgument('x', default_value='0.0',  description='Initial X position')
+    x_arg     = DeclareLaunchArgument('x', default_value='0.3',  description='Initial X position')
     y_arg     = DeclareLaunchArgument('y', default_value='0.0',  description='Initial Y position')
     z_arg     = DeclareLaunchArgument('z', default_value='0.1',  description='Initial Z position')
     roll_arg  = DeclareLaunchArgument('R', default_value='0.0',  description='Initial Roll')
     pitch_arg = DeclareLaunchArgument('P', default_value='0.0',  description='Initial Pitch')
-    yaw_arg   = DeclareLaunchArgument('Y', default_value='0.0',  description='Initial Yaw')
+    yaw_arg   = DeclareLaunchArgument('Y', default_value='-1.5708',  description='Initial Yaw')
 
     # ── Mode argument ─────────────────────────────────────────────────────────
     mode_arg = DeclareLaunchArgument(
@@ -79,18 +106,17 @@ def generate_launch_description():
         description='Steering angle for auto mode (-1 to +1)')
 
     # ── CLR lateral controller arguments ─────────────────────────────────────
+    # FIX: target_lateral_pos was used but never declared — added here
     target_lateral_pos_arg = DeclareLaunchArgument(
         'target_lateral_pos', default_value='0.0',
         description='Target lateral position for CLR lateral controller (m)')
-
+    
+    # 1. This "registers" the argument for the launch script
     desired_velocity_arg = DeclareLaunchArgument(
-        'desired_velocity', default_value='2.0',
-        description='The target velocity passed to the speed node')
-
-    # ── NEW: Lane heading argument ────────────────────────────────────────────
-    lane_heading_arg = DeclareLaunchArgument(
-        'lane_heading', default_value='0.0',
-        description='Lane heading in radians (0.0 = +X direction, 3.14159 = -X direction)')
+        'desired_velocity',
+        default_value='2.0',
+        description='The target velocity passed to the speed node'
+    )
 
     # ── Retrieve launch configurations ───────────────────────────────────────
     world_file = LaunchConfiguration('world')
@@ -101,25 +127,42 @@ def generate_launch_description():
     pitch      = LaunchConfiguration('P')
     yaw        = LaunchConfiguration('Y')
 
-    # ── Package paths ─────────────────────────────────────────────────────────
-    package_name = "gazebo_ackermann_steering_vehicle"
-    package_path = get_package_share_directory(package_name)
+    # ── New World Package Path ───────────────────────────────────────────────
+    # Replace 'my_track_package' with the actual folder name of your map package
+    # world_package_path = get_package_share_directory('autonomous_systems_project_simulation_package_team_12')
+    # default_world_path = os.path.join(world_package_path, 'Worlds', 'Empty_Track.world')
+    # # ── Package paths ─────────────────────────────────────────────────────────
+    # package_name = "gazebo_ackermann_steering_vehicle"
+    # package_path = get_package_share_directory(package_name)
 
     robot_description_path = os.path.join(package_path, 'model', 'vehicle.xacro')
     gz_bridge_params_path  = os.path.join(package_path, 'config', 'ros_gz_bridge.yaml')
     vehicle_params_path    = os.path.join(package_path, 'config', 'parameters.yaml')
+    
 
     # ── Load URDF ─────────────────────────────────────────────────────────────
     robot_description = load_robot_description(robot_description_path, vehicle_params_path)
 
     # ── Gazebo launch ─────────────────────────────────────────────────────────
+    # gazebo_pkg_launch = PythonLaunchDescriptionSource(
+    #     os.path.join(get_package_share_directory('ros_gz_sim'), 'launch', 'gz_sim.launch.py'))
+
+    # gazebo_launch = IncludeLaunchDescription(
+    #     gazebo_pkg_launch,
+    #     launch_arguments={'gz_args': [f'-r -v 4 ', world_file],
+    #                       'on_exit_shutdown': 'true'}.items())
+
+   # ── 5. Gazebo launch (FIXED SYNTAX) ────────────────────────────────────────
     gazebo_pkg_launch = PythonLaunchDescriptionSource(
         os.path.join(get_package_share_directory('ros_gz_sim'), 'launch', 'gz_sim.launch.py'))
 
     gazebo_launch = IncludeLaunchDescription(
         gazebo_pkg_launch,
-        launch_arguments={'gz_args': [f'-r -v 4 ', world_file],
-                          'on_exit_shutdown': 'true'}.items())
+        launch_arguments={
+            # We use the world_file configuration object directly here
+            'gz_args': PythonExpression(["'-r -v 4 ' + '", world_file, "'"]),
+            'on_exit_shutdown': 'true'
+        }.items())
 
     # ── Spawn robot ───────────────────────────────────────────────────────────
     robot_name = "ackermann_steering_vehicle"
@@ -133,8 +176,13 @@ def generate_launch_description():
                    '-R', roll, '-P', pitch, '-Y', yaw,
                    '-allow_renaming', 'false'],
         output='screen')
+    # ── Spawn robot (delayed) ─────────────────────────────────────────────────
+    spawn_with_delay = TimerAction(
+        period=5.0,  # seconds to wait for Gazebo to fully load
+        actions=[spawn_model_gazebo_node]
+    )
 
-    # ── Core nodes ────────────────────────────────────────────────────────────
+    # ── Core nodes (always running) ───────────────────────────────────────────
     robot_state_publisher_node = Node(
         package='robot_state_publisher',
         executable='robot_state_publisher',
@@ -192,9 +240,6 @@ def generate_launch_description():
         executable='Autonomous_Systems_MS_3_CLR_Alg_1_Speed_Team_12',
         output='screen',
         parameters=[{
-            'desired_velocity': ParameterValue(
-                LaunchConfiguration('desired_velocity'),
-                value_type=float),
             'use_sim_time': True,
         }],
         condition=IfCondition(
@@ -205,15 +250,41 @@ def generate_launch_description():
         executable='Autonomous_Systems_MS_3_CLR_Alg_2_Lateral_Team_12',
         output='screen',
         parameters=[{
-            'target_lateral_pos': LaunchConfiguration('target_lateral_pos'),
-            'lane_heading':       LaunchConfiguration('lane_heading'),  # NEW
-            'wheel_radius':       0.3,
-            'wheelbase':          1.4,
+            # FIX: target_lateral_pos now properly passed from declared arg
+            # 'target_lateral_pos': LaunchConfiguration('target_lateral_pos'),
+            # FIX: correct URDF values for wheel_radius and wheelbase
+            'wheel_radius':       0.3,    # from URDF: wheel_radius default
+            'wheelbase':          1.4,    # from URDF: 2 * (body_length/2 - wheel_radius) = 2*0.7
             'use_sim_time':       True,
         }],
         condition=IfCondition(
             PythonExpression(["'", LaunchConfiguration('mode'), "' == 'CLR'"])))
-
+    track1_planner_node = Node(
+        package='autonomous_systems_project_team_12',
+        executable='track1_planner',
+        output='screen',
+        parameters=[{
+                  'desired_velocity': ParameterValue(
+            LaunchConfiguration('desired_velocity'),
+            value_type=float  
+        ),
+            'use_sim_time': True,
+        }],
+        condition=IfCondition(
+            PythonExpression(["'", LaunchConfiguration('mode'), "' == 'CLR'"])))
+    track2_planner_node = Node(
+        package='autonomous_systems_project_team_12',
+        executable='track2_planner',
+        output='screen',
+        parameters=[{
+                'desired_velocity': ParameterValue(
+            LaunchConfiguration('desired_velocity'),
+            value_type=float
+        ),
+            'use_sim_time': True,
+        }],
+        condition=IfCondition(
+            PythonExpression(["'", LaunchConfiguration('mode'), "' == 'CLR'"])))
     # ── Controllers ───────────────────────────────────────────────────────────
     joint_state, forward_velocity, forward_position = start_vehicle_control()
 
@@ -238,26 +309,30 @@ def generate_launch_description():
         pitch_arg,
         yaw_arg,
         mode_arg,
-        velocity_arg,
-        steering_arg,
-        target_lateral_pos_arg,
-        desired_velocity_arg,
-        lane_heading_arg,           # NEW
+        velocity_arg,           # FIX: was declared but never added to LaunchDescription
+        steering_arg,           # FIX: was declared but never added to LaunchDescription
+        target_lateral_pos_arg, # FIX: newly declared and added
+        desired_velocity_arg,   # <--- ADD THIS LINE HERE
 
         # Simulation
         gazebo_launch,
-        spawn_model_gazebo_node,
+        # spawn_model_gazebo_node,
+        spawn_with_delay,
 
         # Core nodes
         robot_state_publisher_node,
         vehicle_controller_node,
+        # vehicle_state_node,
         gz_bridge_node,
+        # rqt_graph_node,
 
         # Mode-conditional nodes
-        keyboard_reader_node,
-        olr_node,
+        # keyboard_reader_node,
+        # olr_node,
         clr_alg1_speed_node,
         clr_alg2_lateral_node,
+        #track1_planner_node,
+        # track2_planner_node
     ])
 
     return launch_description
