@@ -73,7 +73,7 @@ def generate_launch_description():
     # These must be defined before world_arg uses them
     world_package_path = get_package_share_directory('autonomous_systems_project_simulation_package_team_12')
     # default_world_path = os.path.join(world_package_path, 'Worlds', 'Empty_Track.world')
-    default_world_path = os.path.join(world_package_path, 'Worlds', 'City_Track.world')
+    default_world_path = os.path.join(world_package_path, 'Worlds', 'Empty_Track.world')
     
     package_name = "gazebo_ackermann_steering_vehicle"
     package_path = get_package_share_directory(package_name)
@@ -84,12 +84,12 @@ def generate_launch_description():
         description='Full path to the world file')
     
     # ── Initial pose arguments ────────────────────────────────────────────────
-    x_arg     = DeclareLaunchArgument('x', default_value='0.3',  description='Initial X position')
+    x_arg     = DeclareLaunchArgument('x', default_value='0.0',  description='Initial X position')
     y_arg     = DeclareLaunchArgument('y', default_value='0.0',  description='Initial Y position')
     z_arg     = DeclareLaunchArgument('z', default_value='0.1',  description='Initial Z position')
     roll_arg  = DeclareLaunchArgument('R', default_value='0.0',  description='Initial Roll')
     pitch_arg = DeclareLaunchArgument('P', default_value='0.0',  description='Initial Pitch')
-    yaw_arg   = DeclareLaunchArgument('Y', default_value='-1.5708',  description='Initial Yaw')
+    yaw_arg   = DeclareLaunchArgument('Y', default_value='0.0',  description='Initial Yaw')
 
     # ── Mode argument ─────────────────────────────────────────────────────────
     mode_arg = DeclareLaunchArgument(
@@ -285,6 +285,60 @@ def generate_launch_description():
         }],
         condition=IfCondition(
             PythonExpression(["'", LaunchConfiguration('mode'), "' == 'CLR'"])))
+    
+    track3_planner_node = Node(
+    package='autonomous_systems_project_team_12',
+    executable='track3_planner',
+    output='screen',
+    parameters=[{
+        'use_sim_time': True,
+    }],
+    condition=IfCondition(
+        PythonExpression(["'", LaunchConfiguration('mode'), "' == 'CLR'"])))
+    # APF_track3 = Node(
+    # package='autonomous_systems_project_team_12',
+    # executable='APF_Track3_Gazebo',
+    # output='screen',
+    # parameters=[{
+    #     'use_sim_time': True,
+    # }],
+    # condition=IfCondition(
+    #     PythonExpression(["'", LaunchConfiguration('mode'), "' == 'CLR'"])))
+    
+    # apf_2D = Node(
+    # package='autonomous_systems_project_team_12',
+    # executable='apf_2D',
+    # output='screen',
+    # parameters=[{
+    #     'use_sim_time': True,
+    # }],
+    # condition=IfCondition(
+    #     PythonExpression(["'", LaunchConfiguration('mode'), "' == 'CLR'"])))
+    
+    lateral_controller_track3 = Node(
+    package='autonomous_systems_project_team_12',
+    executable='lateral_control_track3',
+    output='screen',
+    parameters=[{
+        # FIX: target_lateral_pos now properly passed from declared arg
+        # 'target_lateral_pos': LaunchConfiguration('target_lateral_pos'),
+        # FIX: correct URDF values for wheel_radius and wheelbase
+        'k_p':       1.0,    # from URDF: wheel_radius default
+        'max_steering':          0.6108,    # from URDF: 2 * (body_length/2 - wheel_radius) = 2*0.7
+        'use_sim_time':       True,
+    }],
+    condition=IfCondition(
+        PythonExpression(["'", LaunchConfiguration('mode'), "' == 'CLR'"])))
+    
+    P2P_controller_track3 = Node(
+    package='autonomous_systems_project_team_12',
+    executable='PointToPoint_control',
+    output='screen',
+    parameters=[{
+        'use_sim_time':       True,
+    }],
+    condition=IfCondition(
+        PythonExpression(["'", LaunchConfiguration('mode'), "' == 'CLR'"])))
     # ── Controllers ───────────────────────────────────────────────────────────
     joint_state, forward_velocity, forward_position = start_vehicle_control()
 
@@ -331,8 +385,13 @@ def generate_launch_description():
         # olr_node,
         clr_alg1_speed_node,
         clr_alg2_lateral_node,
-        #track1_planner_node,
+        track1_planner_node,
         # track2_planner_node
+        # track3_planner_node,
+        # APF_track3,
+        # apf_2D,
+        # lateral_controller_track3,
+        # P2P_controller_track3
     ])
 
     return launch_description
